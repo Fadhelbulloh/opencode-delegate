@@ -5,7 +5,10 @@ export default Plugin.define({
   setup(context) {
     return context.data.on("session.created", (event) => {
       const meta = event.data.metadata as { role?: string } | undefined
-      if (meta?.role === "worker" && context.ui.tabs.enabled()) context.ui.tabs.open(event.data.sessionID)
+      const here = (context.location ?? context.data.location.default())?.directory
+      if (meta?.role !== "worker" || !context.ui.tabs.enabled()) return
+      if (event.data.location?.directory !== here) return
+      context.ui.tabs.open(event.data.sessionID)
     })
   },
 })

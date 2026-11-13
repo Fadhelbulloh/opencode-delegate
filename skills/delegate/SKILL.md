@@ -38,9 +38,13 @@ ME=$(opencode api session.get --param sessionID=$OPENCODE_SESSION_ID)
 W=$(opencode api session.create --data "$(jq -nc --argjson s "$ME" --argjson m "$MODEL" --arg p "$OPENCODE_SESSION_ID" --arg t "worker-<module>-<n>" '{
   title:$t, model:$m, location:{directory:$s.data.location.directory},
   metadata:{role:"worker", planner:$p},
-  permissions:[{action:"shell", resource:"opencode api session.create*", effect:"deny"}]
+  permissions:[
+    {action:"shell", resource:"opencode api session.create*", effect:"deny"},
+    {action:"shell", resource:"opencode api session.update*", effect:"deny"}
+  ]
 }')" | jq -r .data.id)
 ```
+The `worker-tabs` plugin opens the worker as a tab only in the TUI whose directory equals the worker's directory. Other TUIs ignore it.
 
 ## Planner: send task
 Write your own session ID literally. Keep `$OPENCODE_SESSION_ID` literal (quoted heredoc).
