@@ -6,6 +6,8 @@ I use one OpenCode session to plan a module, break down the work, and write prom
 
 `opencode-delegate` handles those handoffs through the OpenCode v2 API. The planner sends tasks to worker sessions; workers send back results or questions. You approve each worker and choose its model.
 
+Two skills: `delegate` for one planner handing tasks to workers, and `teamwork` for one main session coordinating several workers across repositories, with message and review limits enforced by a script (see [Teamwork](#teamwork-one-main-session-several-workers-hard-limits)).
+
 Inspired by [MCP Bridge](https://mcpbridge.dev/), but for OpenCode sessions on one machine.
 
 ## Your planner, with a team of workers
