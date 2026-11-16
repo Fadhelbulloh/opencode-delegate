@@ -158,7 +158,7 @@ The model list comes from `opencode api model.list` on your instance. Nothing is
 - `teamwork-send` can be bypassed by a deliberate direct call to the local service. The `deny` rules block the plain CLI path only.
 - Ledger appends are not locked. Two sends in the same instant can both pass the checks, so a budget can be overshot by the number of concurrent senders; the tests do not cover that.
 - Edit `deny` rules do not cover shell writes. A worker that truncates `ledger.jsonl` or edits `budgets.json` from the shell resets its limits; that is a deliberate bypass, not an accident, and `tasks.md` keeps main's own record.
-- Whether the `edit` rules match absolute paths, relative paths, or both has not been confirmed in a live run. The skill lists both forms.
+- The `edit` rules list both absolute and location-relative paths. Both forms were denied as expected on OpenCode v2.0.28; which one the matcher uses was not isolated.
 - The worker needs shell access to run `opencode api`.
 - `delegate` alone has no thread manager. Keep one open question per worker at a time.
 - Parallel workers in one repository need separate git worktrees; the teamwork skill asks for them, `delegate` alone does not create them.

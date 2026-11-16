@@ -35,7 +35,7 @@ Fill `feature.md` (goal, acceptance criteria, repositories, decisions), `contrac
 - Agree cross-repository contracts in `contract.md` before dispatching dependent tasks in parallel.
 
 ### Spawn a worker
-Use the delegate skill's spawn flow (approval, model list, user choice). Set before the snippet. Rules are matched last-wins, so denies come first and the report allow last; both the absolute and the location-relative form are listed because the edit matcher may use either:
+Use the delegate skill's spawn flow (approval, model list, user choice). Set before the snippet. Rules are matched last-wins, so denies come first and the report allow last; both the absolute and the location-relative form are listed:
 ```bash
 FEAT="$PWD/.opencode/teamwork/<feature>"; REL=".opencode/teamwork/<feature>"
 REPORT="<task>.md"   # reviewer: "<task>.review.md"
