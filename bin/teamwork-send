@@ -76,6 +76,30 @@ printf '%s' "$MEMBERSHIP" | jq -e --arg to "$TO" '.peers | index($to) != null' >
 MEMBER_TASK=$(printf '%s' "$MEMBERSHIP" | jq -r '.task // empty')
 [ -n "$MEMBER_TASK" ] && TASK=$MEMBER_TASK
 [ -n "$TASK" ] || usage "--task required for main"
+
+# --- threading (sent lines only) ---
+[ -f "$LEDGER" ] || : > "$LEDGER"
+SENT=$(jq -sc '[.[] | select(.result == "sent")]' "$LEDGER")
+q() { printf '%s' "$SENT" | jq -e "$@" >/dev/null; }
+
+! q --arg m "$MSG" 'any(.[]; .msg == $m)' || refuse "duplicate msg id"
+
+if [ "$TYPE" = REPLY ]; then
+  [ "$RE" != - ] || refuse "reply needs --re"
+  ORIG=$(printf '%s' "$SENT" | jq -c --arg m "$RE" '[.[] | select(.msg == $m)][0]')
+  [ "$ORIG" != null ] || refuse "no open request $RE for you"
+  OTYPE=$(printf '%s' "$ORIG" | jq -r .type)
+  [ "$OTYPE" = REQUEST ] || refuse "cannot reply to $OTYPE"
+  [ "$(printf '%s' "$ORIG" | jq -r .to)" = "$FROM" ] || refuse "no open request $RE for you"
+  ! q --arg m "$RE" 'any(.[]; .type == "REPLY" and .re == $m)' || refuse "request already answered"
+fi
+
+if [ "$TYPE" = REQUEST ]; then
+  ! q --arg f "$FROM" --arg t "$TO" '
+    [.[] | select(.type == "REQUEST" and .from == $f and .to == $t) | .msg] as $open
+    | [.[] | select(.type == "REPLY") | .re] as $closed
+    | any($open[]; . as $m | ($closed | index($m)) == null)' || refuse "open request to recipient exists"
+fi
 HEADER="[tw msg=$MSG feature=$NAME task=$TASK from=$FROM to=$TO type=$HEADER_TYPE re=$RE]"
 TEXT=$(printf '%s\n%s' "$HEADER" "$BODY")
 DATA=$(jq -nc --arg t "$TEXT" '{text:$t,delivery:"queue"}')
