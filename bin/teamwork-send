@@ -46,10 +46,6 @@ esac
 NAME=$(basename "$FEATURE")
 LEDGER="$FEATURE/ledger.jsonl"
 MEMBERS="$FEATURE/members.json"
-
-# Workers' task comes from members.json; main must pass --task.
-MEMBER_TASK=$(jq -r --arg s "$FROM" '.members[$s].task // empty' "$MEMBERS" 2>/dev/null)
-[ -n "$MEMBER_TASK" ] && TASK=$MEMBER_TASK
 [ -n "$MSG" ] || MSG="m$(date +%s)-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
@@ -60,6 +56,26 @@ ledger() { # ledger <result> <reason>
     '{ts:$ts,msg:$msg,feature:$f,task:$task,from:$from,to:$to,type:$type,status:$st,re:$re,result:$result,reason:$reason}' >> "$LEDGER"
 }
 
+refuse() { # refuse <reason>: log, explain, exit 2. Caller must stop; never retry.
+  ledger refused "$1"
+  printf 'teamwork-send: refused: %s\n' "$1" >&2
+  exit 2
+}
+
+# --- membership ---
+MEMBERSHIP=$(jq -c --arg s "$FROM" --arg to "$TO" '
+  if .main == $s then {task: "", peers: ([.main] + (.members | keys))}
+  elif .members[$s] then .members[$s]
+  else null end' "$MEMBERS" 2>/dev/null) || MEMBERSHIP=
+[ -n "$MEMBERSHIP" ] || refuse "members.json unreadable"
+[ "$MEMBERSHIP" != null ] || refuse "not a member"
+[ "$TO" != "$FROM" ] || refuse "self-send"
+printf '%s' "$MEMBERSHIP" | jq -e --arg to "$TO" '.peers | index($to) != null' >/dev/null || refuse "recipient not in peers"
+
+# Workers' task comes from members.json; main must pass --task.
+MEMBER_TASK=$(printf '%s' "$MEMBERSHIP" | jq -r '.task // empty')
+[ -n "$MEMBER_TASK" ] && TASK=$MEMBER_TASK
+[ -n "$TASK" ] || usage "--task required for main"
 HEADER="[tw msg=$MSG feature=$NAME task=$TASK from=$FROM to=$TO type=$HEADER_TYPE re=$RE]"
 TEXT=$(printf '%s\n%s' "$HEADER" "$BODY")
 DATA=$(jq -nc --arg t "$TEXT" '{text:$t,delivery:"queue"}')

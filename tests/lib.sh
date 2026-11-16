@@ -42,11 +42,11 @@ ledger_last() { tail -n 1 "$1/ledger.jsonl"; }
 
 # assert_exit <code> <cmd...>
 assert_exit() {
-  want=$1; shift
+  _want=$1; shift
   "$@" >/dev/null 2>&1
-  got=$?
-  [ "$got" = "$want" ] && return 0
-  printf '  exit: want %s got %s: %s\n' "$want" "$got" "$*"
+  _got=$?
+  [ "$_got" = "$_want" ] && return 0
+  printf '  exit: want %s got %s: %s\n' "$_want" "$_got" "$*"
   return 1
 }
 
