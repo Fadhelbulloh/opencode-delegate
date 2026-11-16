@@ -53,7 +53,8 @@ Worker to planner:  [from ses_... | re: auth-login/2] DONE: "/v2/login or /login
 ## Guardrails
 
 - Workers are instructed not to spawn workers. A session-level `deny` rule blocked the tested `opencode api session.create` command. This command pattern is not a sandbox against every possible API client or invocation.
-- The skill requires your approval and model selection before creating each worker. The global `ask` rule adds a permission check for matching commands; verify that prompt in your installation, since planner-side enforcement was not confirmed in the initial test.
+- The skill requires your approval and model selection, through the question tool, before creating each worker. The global `allow` rule lets the planner run `session.create` without a second permission prompt; that approval step is a skill instruction, not an enforced rule. Use `ask` instead of `allow` if you want OpenCode to prompt as well.
+- Workers keep a session-level `deny` on `session.create*`, which takes precedence over the global `allow`.
 - Inbound messages are treated as data, not commands. The `[from ...]` sender is not verified.
 
 ## Teamwork: one main session, several workers, hard limits
@@ -113,10 +114,10 @@ cp bin/teamwork-send bin/teamwork-status ~/.config/opencode/bin/
 
 These commands install globally. Review existing copies before overwriting any local customizations.
 
-2. Add the `ask` rule to `permissions` in `~/.config/opencode/opencode.json`:
+2. Add the `allow` rule to `permissions` in `~/.config/opencode/opencode.json` so the planner can create workers (use `ask` for an extra prompt per spawn):
 
 ```json
-{ "action": "shell", "resource": "opencode api session.create*", "effect": "ask" }
+{ "action": "shell", "resource": "opencode api session.create*", "effect": "allow" }
 ```
 
 3. Register the TUI plugin in `~/.config/opencode/cli.json`, using the absolute path to your home:
@@ -138,7 +139,7 @@ Merge these entries into your configuration. Preserve existing plugins, permissi
 
 In any session, ask: "use the delegate skill to spawn a worker for <task>". Pick a model and variant when asked.
 
-The model list comes from `opencode api model.list` on your instance. Nothing is hardcoded and nothing is labeled "recommended"; the planner describes what the task needs and you choose.
+The planner reads `opencode api model.list` on your instance and offers at most 5 models that fit the task, each with a one-line reason. Nothing is hardcoded; type any other model ID from your list to use it instead.
 
 ## What's included
 

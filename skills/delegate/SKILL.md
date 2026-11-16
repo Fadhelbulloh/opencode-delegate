@@ -22,8 +22,8 @@ opencode api model.list | jq -r --argjson s "$ME" '
   | sort_by(.k != $main)[] | "\(.k) [\(.v)]"'
 ```
 2. Ask the user with the question tool, and wait. No answer, no worker.
-   - Show: worker title, task, done criteria, and one sentence on what the task needs (mechanical edit, implementation from a brief, investigation, review). Do not rank models.
-   - Question 1, model: one option per line above. This session's model is labeled "(current)"; nothing is labeled recommended.
+   - Show: worker title, task, done criteria, and one sentence on what the task needs (mechanical edit, implementation from a brief, investigation, review).
+   - Question 1, model: at most 5 options, chosen from the list above for this task, best fit first. Each description says in a few words why it fits (e.g. "cheap, enough for mechanical edits", "different provider for a second opinion"). Pick only from the list; never invent IDs. This session's model, if picked, is labeled "(current)". The question tool's free-text answer lets the user type any other model from the list.
    - Question 2, variant: the variants of the chosen model. Default to this session's variant.
    - Cancelling either question means: do not spawn.
 3. Spawn with the chosen model and variant, tagged as your worker. `DIR` defaults to your directory; set it to a worktree when the task needs one. `EXTRA` adds permission rules; `META` adds metadata (both optional):

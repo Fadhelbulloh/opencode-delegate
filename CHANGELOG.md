@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2
+
+- `delegate`: planner offers at most 5 models suited to the task, with a reason each, instead of every model on the instance.
+- Install: global rule for `opencode api session.create*` is `allow` (was `ask`); the planner spawns without a second prompt. Workers keep their session-level `deny`.
+
 ## 0.2.1
 
 - README introduces both skills up front.
