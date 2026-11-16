@@ -1,6 +1,10 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.1
+
+- README introduces both skills up front.
+
+## 0.2.0
 
 - `teamwork` skill: one main session coordinates workers on one feature across repositories.
 - `bin/teamwork-send`: the only sanctioned message path; refuses non-peers, duplicate ids, second replies, concurrent open requests, and anything over the task or review budget.
