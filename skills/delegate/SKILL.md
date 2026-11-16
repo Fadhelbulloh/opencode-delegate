@@ -13,38 +13,36 @@ opencode api session.get --param sessionID=$OPENCODE_SESSION_ID | jq -c .data.me
 - Otherwise: you are a planner.
 
 ## Planner: spawn worker
-1. Fetch the shortlist (this session's model first, then suited models; missing ones drop out):
+1. List the models this instance offers (this session's model first):
 ```bash
 ME=$(opencode api session.get --param sessionID=$OPENCODE_SESSION_ID)
 opencode api model.list | jq -r --argjson s "$ME" '
-  [.data[] | {k:"\(.providerID)/\(.id)", v:([.variants[]?.id]|join(","))}] as $all
-  | ($s.data.model | "\(.providerID)/\(.id)") as $main
-  | [$main,"9router/cc/claude-sonnet-5-5","9router/cx/gpt-6.1-sol","9router/cc/claude-haiku-5-5"]
-  | reduce .[] as $k ([]; if any(.[]; .==$k) then . else .+[$k] end)
-  | .[] as $k | $all[] | select(.k==$k) | "\(.k) [\(.v)]"'
+  ($s.data.model | "\(.providerID)/\(.id)") as $main
+  | [.data[] | {k:"\(.providerID)/\(.id)", v:([.variants[]?.id]|join(","))}]
+  | sort_by(.k != $main)[] | "\(.k) [\(.v)]"'
 ```
 2. Ask the user with the question tool, and wait. No answer, no worker.
-   - Show: worker title, task, done criteria.
-   - Question 1, model: one option per shortlist line. First is this session's model, labeled "(Recommended)". Descriptions:
-     - `claude-sonnet-5-5`: implementation, refactors, tests.
-     - `gpt-6.1-sol`: second opinion, review, research.
-     - `claude-haiku-5-5`: cheap mechanical edits, renames, docs.
+   - Show: worker title, task, done criteria, and one sentence on what the task needs (mechanical edit, implementation from a brief, investigation, review). Do not rank models.
+   - Question 1, model: one option per line above. This session's model is labeled "(current)"; nothing is labeled recommended.
    - Question 2, variant: the variants of the chosen model. Default to this session's variant.
    - Cancelling either question means: do not spawn.
-3. Spawn with the chosen model and variant, same directory, tagged as your worker:
+3. Spawn with the chosen model and variant, tagged as your worker. `DIR` defaults to your directory; set it to a worktree when the task needs one. `EXTRA` adds permission rules; `META` adds metadata (both optional):
 ```bash
 MODEL='{"providerID":"<provider>","id":"<model>","variant":"<variant>"}'
 ME=$(opencode api session.get --param sessionID=$OPENCODE_SESSION_ID)
-W=$(opencode api session.create --data "$(jq -nc --argjson s "$ME" --argjson m "$MODEL" --arg p "$OPENCODE_SESSION_ID" --arg t "worker-<module>-<n>" '{
-  title:$t, model:$m, location:{directory:$s.data.location.directory},
-  metadata:{role:"worker", planner:$p},
-  permissions:[
+HOME_DIR=$(printf '%s' "$ME" | jq -r .data.location.directory)
+DIR=${DIR:-$HOME_DIR}; EXTRA=${EXTRA:-[]}; META=${META:-null}
+W=$(opencode api session.create --data "$(jq -nc --argjson m "$MODEL" --argjson x "$EXTRA" --argjson meta "$META" \
+  --arg p "$OPENCODE_SESSION_ID" --arg t "worker-<module>-<n>" --arg d "$DIR" --arg h "$HOME_DIR" '{
+  title:$t, model:$m, location:{directory:$d},
+  metadata:({role:"worker", planner:$p, home:$h} + ($meta // {})),
+  permissions:([
     {action:"shell", resource:"opencode api session.create*", effect:"deny"},
     {action:"shell", resource:"opencode api session.update*", effect:"deny"}
-  ]
+  ] + $x)
 }')" | jq -r .data.id)
 ```
-The `worker-tabs` plugin opens the worker as a tab only in the TUI whose directory equals the worker's directory. Other TUIs ignore it.
+The `worker-tabs` plugin opens the worker as a tab only in the TUI whose directory equals `metadata.home` (the planner's directory). Other TUIs ignore it.
 
 ## Planner: send task
 Write your own session ID literally. Keep `$OPENCODE_SESSION_ID` literal (quoted heredoc).

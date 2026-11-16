@@ -96,13 +96,7 @@ Merge these entries into your configuration. Preserve existing plugins, permissi
 
 In any session, ask: "use the delegate skill to spawn a worker for <task>". Pick a model and variant when asked.
 
-The default shortlist is the planner's own model plus three models from the author's setup. Edit the shortlist in `skills/delegate/SKILL.md` to match the models you have.
-
-For an installed copy, edit `~/.config/opencode/skills/delegate/SKILL.md`. The bundled shortlist uses the author's `9router` provider; unavailable models are omitted. List your own model IDs with:
-
-```bash
-opencode api model.list | jq -r '.data[] | "\(.providerID)/\(.id)"'
-```
+The model list comes from `opencode api model.list` on your instance. Nothing is hardcoded and nothing is labeled "recommended"; the planner describes what the task needs and you choose.
 
 ## What's included
 
