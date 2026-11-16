@@ -100,6 +100,21 @@ if [ "$TYPE" = REQUEST ]; then
     | [.[] | select(.type == "REPLY") | .re] as $closed
     | any($open[]; . as $m | ($closed | index($m)) == null)' || refuse "open request to recipient exists"
 fi
+# --- budgets ---
+BUDGET=$(jq -c --arg t "$TASK" '.[$t] // "none"' "$FEATURE/budgets.json" 2>/dev/null) || BUDGET=
+[ -n "$BUDGET" ] || refuse "budgets.json unreadable"
+[ "$BUDGET" != '"none"' ] || refuse "no budget for task $TASK"
+USED=$(printf '%s' "$SENT" | jq --arg t "$TASK" '[.[] | select(.task == $t)] | length')
+MAX=$(printf '%s' "$BUDGET" | jq '.messages // 24')
+[ "$USED" -lt "$MAX" ] || refuse "task budget exhausted ($USED/$MAX)"
+case $TYPE in
+  REVIEW|REVIEW_VERIFY)
+    [ "$TYPE" = REVIEW ] && KEY=review || KEY=verify
+    RUSED=$(printf '%s' "$SENT" | jq --arg t "$TASK" --arg ty "$TYPE" '[.[] | select(.task == $t and .type == $ty)] | length')
+    RMAX=$(printf '%s' "$BUDGET" | jq ".$KEY // 1")
+    [ "$RUSED" -lt "$RMAX" ] || refuse "$KEY budget exhausted" ;;
+esac
+
 HEADER="[tw msg=$MSG feature=$NAME task=$TASK from=$FROM to=$TO type=$HEADER_TYPE re=$RE]"
 TEXT=$(printf '%s\n%s' "$HEADER" "$BODY")
 DATA=$(jq -nc --arg t "$TEXT" '{text:$t,delivery:"queue"}')
