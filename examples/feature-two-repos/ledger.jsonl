@@ -1,8 +1,8 @@
-{"ts":"2026-01-10T09:00:00Z","msg":"m01-brief","feature":"zero-balance-notice","task":"api","from":"ses_main","to":"ses_api","type":"STATUS","status":"INFO","re":"-","result":"sent","reason":""}
-{"ts":"2026-01-10T10:30:00Z","msg":"m02-done","feature":"zero-balance-notice","task":"api","from":"ses_api","to":"ses_main","type":"STATUS","status":"DONE","re":"-","result":"sent","reason":""}
-{"ts":"2026-01-10T10:50:00Z","msg":"m03-review","feature":"zero-balance-notice","task":"api","from":"ses_rev","to":"ses_main","type":"REVIEW","status":"","re":"-","result":"sent","reason":""}
-{"ts":"2026-01-10T10:55:00Z","msg":"m04-fixreq","feature":"zero-balance-notice","task":"api","from":"ses_main","to":"ses_api","type":"REQUEST","status":"","re":"-","result":"sent","reason":""}
-{"ts":"2026-01-10T11:20:00Z","msg":"m05-fixed","feature":"zero-balance-notice","task":"api","from":"ses_api","to":"ses_main","type":"REPLY","status":"","re":"m04-fixreq","result":"sent","reason":""}
-{"ts":"2026-01-10T11:40:00Z","msg":"m06-verify","feature":"zero-balance-notice","task":"api","from":"ses_rev","to":"ses_main","type":"REVIEW_VERIFY","status":"","re":"-","result":"sent","reason":""}
-{"ts":"2026-01-10T11:45:00Z","msg":"m07-verify2","feature":"zero-balance-notice","task":"api","from":"ses_rev","to":"ses_main","type":"REVIEW_VERIFY","status":"","re":"-","result":"refused","reason":"verify budget exhausted"}
-{"ts":"2026-01-10T12:00:00Z","msg":"m08-brief","feature":"zero-balance-notice","task":"ui","from":"ses_main","to":"ses_ui","type":"STATUS","status":"INFO","re":"-","result":"sent","reason":""}
+{"ts":"2026-01-10T09:00:00Z","msg":"m01-brief","feature":"export-csv","task":"api","from":"ses_main","to":"ses_api","type":"STATUS","status":"INFO","re":"-","result":"sent","reason":""}
+{"ts":"2026-01-10T10:30:00Z","msg":"m02-done","feature":"export-csv","task":"api","from":"ses_api","to":"ses_main","type":"STATUS","status":"DONE","re":"-","result":"sent","reason":""}
+{"ts":"2026-01-10T10:50:00Z","msg":"m03-review","feature":"export-csv","task":"api","from":"ses_rev","to":"ses_main","type":"REVIEW","status":"","re":"-","result":"sent","reason":""}
+{"ts":"2026-01-10T10:55:00Z","msg":"m04-fixreq","feature":"export-csv","task":"api","from":"ses_main","to":"ses_api","type":"REQUEST","status":"","re":"-","result":"sent","reason":""}
+{"ts":"2026-01-10T11:20:00Z","msg":"m05-fixed","feature":"export-csv","task":"api","from":"ses_api","to":"ses_main","type":"REPLY","status":"","re":"m04-fixreq","result":"sent","reason":""}
+{"ts":"2026-01-10T11:40:00Z","msg":"m06-verify","feature":"export-csv","task":"api","from":"ses_rev","to":"ses_main","type":"REVIEW_VERIFY","status":"","re":"-","result":"sent","reason":""}
+{"ts":"2026-01-10T11:45:00Z","msg":"m07-verify2","feature":"export-csv","task":"api","from":"ses_rev","to":"ses_main","type":"REVIEW_VERIFY","status":"","re":"-","result":"refused","reason":"verify budget exhausted"}
+{"ts":"2026-01-10T12:00:00Z","msg":"m08-brief","feature":"export-csv","task":"ui","from":"ses_main","to":"ses_ui","type":"STATUS","status":"INFO","re":"-","result":"sent","reason":""}

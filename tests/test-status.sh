@@ -5,7 +5,7 @@ as() { _s=$1; shift; OPENCODE_SESSION_ID=$_s "$SEND" --feature "$F" "$@" >/dev/n
 
 test_status_table() {
   as ses_a --to ses_b --type STATUS --status INFO --body i || return 1
-  as ses_r --to ses_a --type REVIEW --body r || return 1
+  as ses_r --to ses_main --type REVIEW --body r || return 1
   old=$(date -u -r $(( $(date +%s) - 5400 )) +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -d '-90 minutes' +%Y-%m-%dT%H:%M:%SZ)
   printf '{"ts":"%s","msg":"OLD","feature":"feature","task":"api","from":"ses_a","to":"ses_b","type":"REQUEST","status":"","re":"-","result":"sent","reason":""}\n' "$old" >> "$F/ledger.jsonl"
   out=$("$STATUS" --feature "$F") || return 1

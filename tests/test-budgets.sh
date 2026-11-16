@@ -32,20 +32,20 @@ test_refused_lines_do_not_count() {
 }
 
 test_second_review_refused() {
-  as ses_r --to ses_a --type REVIEW --body r || return 1
-  refused "review budget exhausted" ses_r --to ses_a --type REVIEW --body r
+  as ses_r --to ses_main --type REVIEW --body r || return 1
+  refused "review budget exhausted" ses_r --to ses_main --type REVIEW --body r
 }
 
 test_second_verify_refused() {
-  as ses_r --to ses_a --type REVIEW_VERIFY --body v || return 1
-  refused "verify budget exhausted" ses_r --to ses_a --type REVIEW_VERIFY --body v
+  as ses_r --to ses_main --type REVIEW_VERIFY --body v || return 1
+  refused "verify budget exhausted" ses_r --to ses_main --type REVIEW_VERIFY --body v
 }
 
 test_budget_raise_takes_effect() {
-  as ses_r --to ses_a --type REVIEW --body r || return 1
-  refused "review budget exhausted" ses_r --to ses_a --type REVIEW --body r || return 1
+  as ses_r --to ses_main --type REVIEW --body r || return 1
+  refused "review budget exhausted" ses_r --to ses_main --type REVIEW --body r || return 1
   set_budget '.api.review = 2'
-  as ses_r --to ses_a --type REVIEW --body r
+  as ses_r --to ses_main --type REVIEW --body r
 }
 
 test_missing_task_budget_refused() {

@@ -1,22 +1,22 @@
 # Brief: api
 
-Feature: zero-balance-notice. Repository: ../api. Branch: feat/balance-exhausted from main.
+Feature: export-csv. Repository: ../api. Branch: feat/export-ready from main.
 
 ## Goal
-Add `balance_exhausted` to the account response.
+Add `export_ready` to the report response.
 
 ## Acceptance criteria (this task only)
-- `GET /v1/account` returns `balance_exhausted: true` when balance is 0, `false` otherwise.
+- `GET /v1/reports/{id}` returns `export_ready: true` when the export file exists, `false` otherwise.
 - Field is always present.
 
 ## You own
-- `src/account/serializer.*`, `src/account/handler.*`, their tests.
+- `src/reports/serializer.*`, `src/reports/handler.*`, their tests.
 
 ## Interfaces from other tasks
 - contract.md "API": response shape; the UI task consumes it.
 
 ## Commands
-- test: `npm test -- account`
+- test: `npm test -- reports`
 
 ## Report
-Write to `.opencode/teamwork/zero-balance-notice/reports/api.md`.
+Write to `.opencode/teamwork/export-csv/reports/api.md`.

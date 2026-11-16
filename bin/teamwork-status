@@ -14,6 +14,7 @@ done
 
 LEDGER="$FEATURE/ledger.jsonl"
 [ -f "$LEDGER" ] || LEDGER=/dev/null
+jq -e . "$LEDGER" >/dev/null 2>&1 || [ "$LEDGER" = /dev/null ] || { printf 'teamwork-status: ledger.jsonl unreadable\n' >&2; exit 2; }
 
 jq -r -s --slurpfile b "$FEATURE/budgets.json" --arg now "$(date -u +%s)" '
   [.[] | select(.result == "sent")] as $sent

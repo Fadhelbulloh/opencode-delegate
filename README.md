@@ -75,6 +75,7 @@ Every message between sessions goes through `bin/teamwork-send`. It refuses, log
 | Rule | Default |
 | --- | --- |
 | Sender not a member, recipient not a peer, or sender == recipient | always |
+| `REVIEW` / `REVIEW_VERIFY` from anyone but a registered reviewer, or to anyone but main | always |
 | Duplicate message id | always |
 | `REPLY` to anything but an open `REQUEST` addressed to you, or a second reply | always |
 | New `REQUEST` while one is still open to that recipient | always |
@@ -155,7 +156,9 @@ The model list comes from `opencode api model.list` on your instance. Nothing is
 - Senders are not authenticated. Any local process can post to any session.
 - No timeout daemon. A request nobody answers is shown as stale by `teamwork-status` when main next looks, not acted on.
 - `teamwork-send` can be bypassed by a deliberate direct call to the local service. The `deny` rules block the plain CLI path only.
-- Ledger appends are not locked. Two sends in the same instant could interleave; the tests do not cover that.
+- Ledger appends are not locked. Two sends in the same instant can both pass the checks, so a budget can be overshot by the number of concurrent senders; the tests do not cover that.
+- Edit `deny` rules do not cover shell writes. A worker that truncates `ledger.jsonl` or edits `budgets.json` from the shell resets its limits; that is a deliberate bypass, not an accident, and `tasks.md` keeps main's own record.
+- Whether the `edit` rules match absolute paths, relative paths, or both has not been confirmed in a live run. The skill lists both forms.
 - The worker needs shell access to run `opencode api`.
 - `delegate` alone has no thread manager. Keep one open question per worker at a time.
 - Parallel workers in one repository need separate git worktrees; the teamwork skill asks for them, `delegate` alone does not create them.

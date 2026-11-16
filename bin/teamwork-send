@@ -42,6 +42,8 @@ case $TYPE in
   *) usage "--type REQUEST|REPLY|STATUS|REVIEW|REVIEW_VERIFY required" ;;
 esac
 [ "$BODY" = - ] && BODY=$(cat)
+case "$MSG$TASK$RE$TO" in *[!A-Za-z0-9._-]*) usage "--msg, --task, --re, --to: only [A-Za-z0-9._-]" ;; esac
+[ "$TYPE" = REPLY ] || [ "$RE" = - ] || usage "--re is only for REPLY"
 
 NAME=$(basename "$FEATURE")
 LEDGER="$FEATURE/ledger.jsonl"
@@ -64,13 +66,23 @@ refuse() { # refuse <reason>: log, explain, exit 2. Caller must stop; never retr
 
 # --- membership ---
 MEMBERSHIP=$(jq -c --arg s "$FROM" --arg to "$TO" '
-  if .main == $s then {task: "", peers: ([.main] + (.members | keys))}
-  elif .members[$s] then .members[$s]
+  if .main == $s then {task: "", peers: ([.main] + (.members | keys)), main: .main, role: "main"}
+  elif .members[$s] then (.members[$s] + {main: .main})
   else null end' "$MEMBERS" 2>/dev/null) || MEMBERSHIP=
 [ -n "$MEMBERSHIP" ] || refuse "members.json unreadable"
 [ "$MEMBERSHIP" != null ] || refuse "not a member"
 [ "$TO" != "$FROM" ] || refuse "self-send"
-printf '%s' "$MEMBERSHIP" | jq -e --arg to "$TO" '.peers | index($to) != null' >/dev/null || refuse "recipient not in peers"
+MAIN_ID=$(printf '%s' "$MEMBERSHIP" | jq -r .main)
+ROLE=$(printf '%s' "$MEMBERSHIP" | jq -r '.role // "worker"')
+# REPLY is routed to the requester below; peers are checked for every other type.
+if [ "$TYPE" != REPLY ]; then
+  printf '%s' "$MEMBERSHIP" | jq -e --arg to "$TO" '.peers | index($to) != null' >/dev/null || refuse "recipient not in peers"
+fi
+case $TYPE in
+  REVIEW|REVIEW_VERIFY)
+    [ "$ROLE" = reviewer ] || refuse "only a reviewer sends $TYPE"
+    [ "$TO" = "$MAIN_ID" ] || refuse "$TYPE goes to main" ;;
+esac
 
 # Workers' task comes from members.json; main must pass --task.
 MEMBER_TASK=$(printf '%s' "$MEMBERSHIP" | jq -r '.task // empty')
@@ -79,7 +91,7 @@ MEMBER_TASK=$(printf '%s' "$MEMBERSHIP" | jq -r '.task // empty')
 
 # --- threading (sent lines only) ---
 [ -f "$LEDGER" ] || : > "$LEDGER"
-SENT=$(jq -sc '[.[] | select(.result == "sent")]' "$LEDGER")
+SENT=$(jq -sc '[.[] | select(.result == "sent")]' "$LEDGER" 2>/dev/null) || refuse "ledger.jsonl unreadable"
 q() { printf '%s' "$SENT" | jq -e "$@" >/dev/null; }
 
 ! q --arg m "$MSG" 'any(.[]; .msg == $m)' || refuse "duplicate msg id"
@@ -91,6 +103,7 @@ if [ "$TYPE" = REPLY ]; then
   OTYPE=$(printf '%s' "$ORIG" | jq -r .type)
   [ "$OTYPE" = REQUEST ] || refuse "cannot reply to $OTYPE"
   [ "$(printf '%s' "$ORIG" | jq -r .to)" = "$FROM" ] || refuse "no open request $RE for you"
+  [ "$(printf '%s' "$ORIG" | jq -r .from)" = "$TO" ] || refuse "reply must go to requester"
   ! q --arg m "$RE" 'any(.[]; .type == "REPLY" and .re == $m)' || refuse "request already answered"
 fi
 
