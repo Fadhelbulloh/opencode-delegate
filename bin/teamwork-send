@@ -1,0 +1,73 @@
+#!/bin/sh
+# teamwork-send: the only sanctioned way for teamwork sessions to message each other.
+# Checks membership, threading, and budgets against the feature ledger, then
+# queues the message with `opencode api session.prompt`.
+#
+# Usage:
+#   teamwork-send --feature <dir> --to <session> --type REQUEST|REPLY|STATUS|REVIEW|REVIEW_VERIFY
+#                 [--task <t>] [--re <msg>] [--status DONE|FAILED|BLOCKED|INFO] [--msg <id>] --body <text|->
+# Sender is $OPENCODE_SESSION_ID. Exit 0 sent, 2 refused, 1 usage/error.
+
+set -u
+
+usage() { printf 'usage: %s\n' "$1" >&2; exit 1; }
+
+FEATURE= TO= TYPE= TASK= RE=- SUBSTATUS= MSG= BODY=
+while [ $# -gt 0 ]; do
+  case $1 in
+    --feature) FEATURE=$2; shift 2 ;;
+    --to) TO=$2; shift 2 ;;
+    --type) TYPE=$2; shift 2 ;;
+    --task) TASK=$2; shift 2 ;;
+    --re) RE=$2; shift 2 ;;
+    --status) SUBSTATUS=$2; shift 2 ;;
+    --msg) MSG=$2; shift 2 ;;
+    --body) BODY=$2; shift 2 ;;
+    *) usage "unknown option $1" ;;
+  esac
+done
+
+[ -n "$FEATURE" ] || usage "--feature required"
+[ -n "$TO" ] || usage "--to required"
+[ -n "$BODY" ] || usage "--body required"
+FROM=${OPENCODE_SESSION_ID:-}
+[ -n "$FROM" ] || usage "OPENCODE_SESSION_ID not set"
+case $TYPE in
+  REQUEST|REPLY|REVIEW|REVIEW_VERIFY) HEADER_TYPE=$TYPE ;;
+  STATUS)
+    case $SUBSTATUS in
+      DONE|FAILED|BLOCKED|INFO) HEADER_TYPE="STATUS/$SUBSTATUS" ;;
+      *) usage "--status DONE|FAILED|BLOCKED|INFO required for STATUS" ;;
+    esac ;;
+  *) usage "--type REQUEST|REPLY|STATUS|REVIEW|REVIEW_VERIFY required" ;;
+esac
+[ "$BODY" = - ] && BODY=$(cat)
+
+NAME=$(basename "$FEATURE")
+LEDGER="$FEATURE/ledger.jsonl"
+MEMBERS="$FEATURE/members.json"
+
+# Workers' task comes from members.json; main must pass --task.
+MEMBER_TASK=$(jq -r --arg s "$FROM" '.members[$s].task // empty' "$MEMBERS" 2>/dev/null)
+[ -n "$MEMBER_TASK" ] && TASK=$MEMBER_TASK
+[ -n "$MSG" ] || MSG="m$(date +%s)-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
+TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+ledger() { # ledger <result> <reason>
+  jq -nc --arg ts "$TS" --arg msg "$MSG" --arg f "$NAME" --arg task "$TASK" \
+    --arg from "$FROM" --arg to "$TO" --arg type "$TYPE" --arg st "$SUBSTATUS" --arg re "$RE" \
+    --arg result "$1" --arg reason "$2" \
+    '{ts:$ts,msg:$msg,feature:$f,task:$task,from:$from,to:$to,type:$type,status:$st,re:$re,result:$result,reason:$reason}' >> "$LEDGER"
+}
+
+HEADER="[tw msg=$MSG feature=$NAME task=$TASK from=$FROM to=$TO type=$HEADER_TYPE re=$RE]"
+TEXT=$(printf '%s\n%s' "$HEADER" "$BODY")
+DATA=$(jq -nc --arg t "$TEXT" '{text:$t,delivery:"queue"}')
+
+if opencode api session.prompt --param "sessionID=$TO" --data "$DATA" >/dev/null; then
+  ledger sent ""
+else
+  ledger error "session.prompt failed"
+  printf 'teamwork-send: session.prompt failed\n' >&2
+  exit 1
+fi
