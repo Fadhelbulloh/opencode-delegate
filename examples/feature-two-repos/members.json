@@ -1,0 +1,5 @@
+{ "main": "ses_main",
+  "members": {
+    "ses_api": { "task": "api", "peers": ["ses_main", "ses_ui"] },
+    "ses_ui":  { "task": "ui",  "peers": ["ses_main", "ses_api"] },
+    "ses_rev": { "task": "api", "peers": ["ses_main", "ses_api"], "role": "reviewer" } } }

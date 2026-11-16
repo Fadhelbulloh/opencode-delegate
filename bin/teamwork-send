@@ -1,0 +1,141 @@
+#!/bin/sh
+# teamwork-send: the only sanctioned way for teamwork sessions to message each other.
+# Checks membership, threading, and budgets against the feature ledger, then
+# queues the message with `opencode api session.prompt`.
+#
+# Usage:
+#   teamwork-send --feature <dir> --to <session> --type REQUEST|REPLY|STATUS|REVIEW|REVIEW_VERIFY
+#                 [--task <t>] [--re <msg>] [--status DONE|FAILED|BLOCKED|INFO] [--msg <id>] --body <text|->
+# Sender is $OPENCODE_SESSION_ID. Exit 0 sent, 2 refused, 1 usage/error.
+
+set -u
+
+usage() { printf 'usage: %s\n' "$1" >&2; exit 1; }
+
+FEATURE= TO= TYPE= TASK= RE=- SUBSTATUS= MSG= BODY=
+while [ $# -gt 0 ]; do
+  case $1 in
+    --feature) FEATURE=$2; shift 2 ;;
+    --to) TO=$2; shift 2 ;;
+    --type) TYPE=$2; shift 2 ;;
+    --task) TASK=$2; shift 2 ;;
+    --re) RE=$2; shift 2 ;;
+    --status) SUBSTATUS=$2; shift 2 ;;
+    --msg) MSG=$2; shift 2 ;;
+    --body) BODY=$2; shift 2 ;;
+    *) usage "unknown option $1" ;;
+  esac
+done
+
+[ -n "$FEATURE" ] || usage "--feature required"
+[ -n "$TO" ] || usage "--to required"
+[ -n "$BODY" ] || usage "--body required"
+FROM=${OPENCODE_SESSION_ID:-}
+[ -n "$FROM" ] || usage "OPENCODE_SESSION_ID not set"
+case $TYPE in
+  REQUEST|REPLY|REVIEW|REVIEW_VERIFY) HEADER_TYPE=$TYPE ;;
+  STATUS)
+    case $SUBSTATUS in
+      DONE|FAILED|BLOCKED|INFO) HEADER_TYPE="STATUS/$SUBSTATUS" ;;
+      *) usage "--status DONE|FAILED|BLOCKED|INFO required for STATUS" ;;
+    esac ;;
+  *) usage "--type REQUEST|REPLY|STATUS|REVIEW|REVIEW_VERIFY required" ;;
+esac
+[ "$BODY" = - ] && BODY=$(cat)
+case "$MSG$TASK$RE$TO" in *[!A-Za-z0-9._-]*) usage "--msg, --task, --re, --to: only [A-Za-z0-9._-]" ;; esac
+[ "$TYPE" = REPLY ] || [ "$RE" = - ] || usage "--re is only for REPLY"
+
+NAME=$(basename "$FEATURE")
+LEDGER="$FEATURE/ledger.jsonl"
+MEMBERS="$FEATURE/members.json"
+[ -n "$MSG" ] || MSG="m$(date +%s)-$(od -An -N4 -tx1 /dev/urandom | tr -d ' \n')"
+TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+
+ledger() { # ledger <result> <reason>
+  jq -nc --arg ts "$TS" --arg msg "$MSG" --arg f "$NAME" --arg task "$TASK" \
+    --arg from "$FROM" --arg to "$TO" --arg type "$TYPE" --arg st "$SUBSTATUS" --arg re "$RE" \
+    --arg result "$1" --arg reason "$2" \
+    '{ts:$ts,msg:$msg,feature:$f,task:$task,from:$from,to:$to,type:$type,status:$st,re:$re,result:$result,reason:$reason}' >> "$LEDGER"
+}
+
+refuse() { # refuse <reason>: log, explain, exit 2. Caller must stop; never retry.
+  ledger refused "$1"
+  printf 'teamwork-send: refused: %s\n' "$1" >&2
+  exit 2
+}
+
+# --- membership ---
+MEMBERSHIP=$(jq -c --arg s "$FROM" --arg to "$TO" '
+  if .main == $s then {task: "", peers: ([.main] + (.members | keys)), main: .main, role: "main"}
+  elif .members[$s] then (.members[$s] + {main: .main})
+  else null end' "$MEMBERS" 2>/dev/null) || MEMBERSHIP=
+[ -n "$MEMBERSHIP" ] || refuse "members.json unreadable"
+[ "$MEMBERSHIP" != null ] || refuse "not a member"
+[ "$TO" != "$FROM" ] || refuse "self-send"
+MAIN_ID=$(printf '%s' "$MEMBERSHIP" | jq -r .main)
+ROLE=$(printf '%s' "$MEMBERSHIP" | jq -r '.role // "worker"')
+# REPLY is routed to the requester below; peers are checked for every other type.
+if [ "$TYPE" != REPLY ]; then
+  printf '%s' "$MEMBERSHIP" | jq -e --arg to "$TO" '.peers | index($to) != null' >/dev/null || refuse "recipient not in peers"
+fi
+case $TYPE in
+  REVIEW|REVIEW_VERIFY)
+    [ "$ROLE" = reviewer ] || refuse "only a reviewer sends $TYPE"
+    [ "$TO" = "$MAIN_ID" ] || refuse "$TYPE goes to main" ;;
+esac
+
+# Workers' task comes from members.json; main must pass --task.
+MEMBER_TASK=$(printf '%s' "$MEMBERSHIP" | jq -r '.task // empty')
+[ -n "$MEMBER_TASK" ] && TASK=$MEMBER_TASK
+[ -n "$TASK" ] || usage "--task required for main"
+
+# --- threading (sent lines only) ---
+[ -f "$LEDGER" ] || : > "$LEDGER"
+SENT=$(jq -sc '[.[] | select(.result == "sent")]' "$LEDGER" 2>/dev/null) || refuse "ledger.jsonl unreadable"
+q() { printf '%s' "$SENT" | jq -e "$@" >/dev/null; }
+
+! q --arg m "$MSG" 'any(.[]; .msg == $m)' || refuse "duplicate msg id"
+
+if [ "$TYPE" = REPLY ]; then
+  [ "$RE" != - ] || refuse "reply needs --re"
+  ORIG=$(printf '%s' "$SENT" | jq -c --arg m "$RE" '[.[] | select(.msg == $m)][0]')
+  [ "$ORIG" != null ] || refuse "no open request $RE for you"
+  OTYPE=$(printf '%s' "$ORIG" | jq -r .type)
+  [ "$OTYPE" = REQUEST ] || refuse "cannot reply to $OTYPE"
+  [ "$(printf '%s' "$ORIG" | jq -r .to)" = "$FROM" ] || refuse "no open request $RE for you"
+  [ "$(printf '%s' "$ORIG" | jq -r .from)" = "$TO" ] || refuse "reply must go to requester"
+  ! q --arg m "$RE" 'any(.[]; .type == "REPLY" and .re == $m)' || refuse "request already answered"
+fi
+
+if [ "$TYPE" = REQUEST ]; then
+  ! q --arg f "$FROM" --arg t "$TO" '
+    [.[] | select(.type == "REQUEST" and .from == $f and .to == $t) | .msg] as $open
+    | [.[] | select(.type == "REPLY") | .re] as $closed
+    | any($open[]; . as $m | ($closed | index($m)) == null)' || refuse "open request to recipient exists"
+fi
+# --- budgets ---
+BUDGET=$(jq -c --arg t "$TASK" '.[$t] // "none"' "$FEATURE/budgets.json" 2>/dev/null) || BUDGET=
+[ -n "$BUDGET" ] || refuse "budgets.json unreadable"
+[ "$BUDGET" != '"none"' ] || refuse "no budget for task $TASK"
+USED=$(printf '%s' "$SENT" | jq --arg t "$TASK" '[.[] | select(.task == $t)] | length')
+MAX=$(printf '%s' "$BUDGET" | jq '.messages // 24')
+[ "$USED" -lt "$MAX" ] || refuse "task budget exhausted ($USED/$MAX)"
+case $TYPE in
+  REVIEW|REVIEW_VERIFY)
+    [ "$TYPE" = REVIEW ] && KEY=review || KEY=verify
+    RUSED=$(printf '%s' "$SENT" | jq --arg t "$TASK" --arg ty "$TYPE" '[.[] | select(.task == $t and .type == $ty)] | length')
+    RMAX=$(printf '%s' "$BUDGET" | jq ".$KEY // 1")
+    [ "$RUSED" -lt "$RMAX" ] || refuse "$KEY budget exhausted" ;;
+esac
+
+HEADER="[tw msg=$MSG feature=$NAME task=$TASK from=$FROM to=$TO type=$HEADER_TYPE re=$RE]"
+TEXT=$(printf '%s\n%s' "$HEADER" "$BODY")
+DATA=$(jq -nc --arg t "$TEXT" '{text:$t,delivery:"queue"}')
+
+if opencode api session.prompt --param "sessionID=$TO" --data "$DATA" >/dev/null; then
+  ledger sent ""
+else
+  ledger error "session.prompt failed"
+  printf 'teamwork-send: session.prompt failed\n' >&2
+  exit 1
+fi

@@ -54,20 +54,60 @@ Worker to planner:  [from ses_... | re: auth-login/2] DONE: "/v2/login or /login
 - The skill requires your approval and model selection before creating each worker. The global `ask` rule adds a permission check for matching commands; verify that prompt in your installation, since planner-side enforcement was not confirmed in the initial test.
 - Inbound messages are treated as data, not commands. The `[from ...]` sender is not verified.
 
+## Teamwork: one main session, several workers, hard limits
+
+`delegate` is one planner handing off isolated tasks. `teamwork` is for one person who owns a product across repositories: the main session acts as product analyst and coordinator, workers on the same feature can ask each other technical questions, and every exchange has a budget enforced by a script.
+
+```text
+.opencode/teamwork/<feature>/       scratch for one feature, git-ignored
+  feature.md   goal, acceptance criteria, repositories, decisions
+  contract.md  cross-repo contracts; one editor
+  tasks.md     state, worker, model, budget use per task
+  members.json who may message whom (read by the script)
+  budgets.json limits per task (read by the script)
+  ledger.jsonl every message, sent or refused
+  briefs/      one focused handoff per task; never the whole plan
+  reports/     one report per task; the only file a worker may edit here
+```
+
+Every message between sessions goes through `bin/teamwork-send`. It refuses, logs the refusal, and exits 2 when:
+
+| Rule | Default |
+| --- | --- |
+| Sender not a member, recipient not a peer, or sender == recipient | always |
+| `REVIEW` / `REVIEW_VERIFY` from anyone but a registered reviewer, or to anyone but main | always |
+| Duplicate message id | always |
+| `REPLY` to anything but an open `REQUEST` addressed to you, or a second reply | always |
+| New `REQUEST` while one is still open to that recipient | always |
+| Messages for a task | 24 |
+| `REVIEW` messages per task | 1 |
+| `REVIEW_VERIFY` messages per task | 1 |
+
+On refusal the worker stops and marks its report `BLOCKED` or `PAUSED`. Only you can raise a budget; main records your decision in `budgets.json`. Review is one consolidated pass, one fix round, one verification; anything still open comes back to you with three options: one more round, accept with disclosed findings, stop.
+
+What this gives: only `REQUEST` can be answered, and only once; every other type ends the thread. A task has a fixed number of messages, and reaching it pauses the task for you. Nothing creates sessions, re-sends, or re-opens budgets without a user action. The limits are checked by a script against a ledger, not by the model's judgement.
+
+What it does not give: protection against a worker that bypasses the script on purpose. Worker sessions get `deny` rules for `opencode api session.prompt*`, `session.create*`, and `session.update*`; a deliberate `curl` to the local service is still possible. The configuration makes bypass an explicit act, not an accident.
+
+See [examples/feature-two-repos](examples/feature-two-repos) for a filled-in feature directory after one review round.
+
 ## Install
 
 Requires **OpenCode v2**, **Git**, and **jq**. Tested with OpenCode **v2.0.28**.
 
-1. Copy the skill and the plugin into your global config:
+1. Copy the skills, the scripts, and the plugin into your global config:
 
 ```bash
 git clone https://github.com/Fadhelbulloh/opencode-delegate.git
 cd opencode-delegate
 
-mkdir -p ~/.config/opencode/skills ~/.config/opencode/plugins
-cp -r skills/delegate ~/.config/opencode/skills/
+mkdir -p ~/.config/opencode/skills ~/.config/opencode/plugins ~/.config/opencode/bin
+cp -r skills/delegate skills/teamwork ~/.config/opencode/skills/
 cp -r plugins/worker-tabs ~/.config/opencode/plugins/
+cp bin/teamwork-send bin/teamwork-status ~/.config/opencode/bin/
 ```
+
+`teamwork` is optional; `delegate` works on its own. The skills call the scripts by their path under `~/.config/opencode/bin`, so no `PATH` change is needed.
 
 These commands install globally. Review existing copies before overwriting any local customizations.
 
@@ -96,25 +136,33 @@ Merge these entries into your configuration. Preserve existing plugins, permissi
 
 In any session, ask: "use the delegate skill to spawn a worker for <task>". Pick a model and variant when asked.
 
-The default shortlist is the planner's own model plus three models from the author's setup. Edit the shortlist in `skills/delegate/SKILL.md` to match the models you have.
-
-For an installed copy, edit `~/.config/opencode/skills/delegate/SKILL.md`. The bundled shortlist uses the author's `9router` provider; unavailable models are omitted. List your own model IDs with:
-
-```bash
-opencode api model.list | jq -r '.data[] | "\(.providerID)/\(.id)"'
-```
+The model list comes from `opencode api model.list` on your instance. Nothing is hardcoded and nothing is labeled "recommended"; the planner describes what the task needs and you choose.
 
 ## What's included
 
 | File | Purpose |
 | --- | --- |
 | [skills/delegate/SKILL.md](skills/delegate/SKILL.md) | Approval, model selection, worker creation, and reporting conventions |
-| [plugins/worker-tabs/tui.ts](plugins/worker-tabs/tui.ts) | Opens tabs for new sessions tagged as workers |
+| [skills/teamwork/SKILL.md](skills/teamwork/SKILL.md) | Main/worker/reviewer flow, feature workspace, review rounds, budgets |
+| [skills/teamwork/templates/](skills/teamwork/templates/) | Feature, contract, tasks, brief, report, members, budgets templates |
+| [bin/teamwork-send](bin/teamwork-send) | Checked message sending; the only path between teamwork sessions |
+| [bin/teamwork-status](bin/teamwork-status) | Budget use and open-request age per task |
+| [plugins/worker-tabs/tui.ts](plugins/worker-tabs/tui.ts) | Opens tabs for new sessions tagged as workers, in the planner's TUI |
+| [tests/](tests/) | `sh tests/run.sh`: refusal and budget cases against a fake `opencode` |
 
 ## Limits
 
-- API acceptance does not confirm that the planner processed a report. Sending to a deleted planner fails; the skill has no retry or acknowledgement workflow.
-- Labels provide reply context, but there is no thread manager. Keep one open question per worker at a time.
+- API acceptance does not confirm that the planner processed a report. Sending to a deleted planner fails; there is no retry or acknowledgement.
+- Senders are not authenticated. Any local process can post to any session.
+- No timeout daemon. A request nobody answers is shown as stale by `teamwork-status` when main next looks, not acted on.
+- `teamwork-send` can be bypassed by a deliberate direct call to the local service. The `deny` rules block the plain CLI path only.
+- Ledger appends are not locked. Two sends in the same instant can both pass the checks, so a budget can be overshot by the number of concurrent senders; the tests do not cover that.
+- Edit `deny` rules do not cover shell writes. A worker that truncates `ledger.jsonl` or edits `budgets.json` from the shell resets its limits; that is a deliberate bypass, not an accident, and `tasks.md` keeps main's own record.
+- The `edit` rules list both absolute and location-relative paths. Both forms were denied as expected on OpenCode v2.0.28; which one the matcher uses was not isolated.
 - The worker needs shell access to run `opencode api`.
-- Workers share the planner's directory. Coordinate file ownership for parallel tasks; the skill does not create isolated worktrees.
-- The tab plugin opens any new worker whose creation event reaches that TUI. It does not filter by planner.
+- `delegate` alone has no thread manager. Keep one open question per worker at a time.
+- Parallel workers in one repository need separate git worktrees; the teamwork skill asks for them, `delegate` alone does not create them.
+
+## License
+
+MIT. See [LICENSE](LICENSE).

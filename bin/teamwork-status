@@ -1,0 +1,31 @@
+#!/bin/sh
+# teamwork-status --feature <dir>: markdown table of budget use and open requests per task.
+# Main pastes the output into tasks.md. Read-only.
+
+set -u
+FEATURE=
+while [ $# -gt 0 ]; do
+  case $1 in
+    --feature) FEATURE=$2; shift 2 ;;
+    *) printf 'usage: teamwork-status --feature <dir>\n' >&2; exit 1 ;;
+  esac
+done
+[ -n "$FEATURE" ] || { printf 'usage: teamwork-status --feature <dir>\n' >&2; exit 1; }
+
+LEDGER="$FEATURE/ledger.jsonl"
+[ -f "$LEDGER" ] || LEDGER=/dev/null
+jq -e . "$LEDGER" >/dev/null 2>&1 || [ "$LEDGER" = /dev/null ] || { printf 'teamwork-status: ledger.jsonl unreadable\n' >&2; exit 2; }
+
+jq -r -s --slurpfile b "$FEATURE/budgets.json" --arg now "$(date -u +%s)" '
+  [.[] | select(.result == "sent")] as $sent
+  | [$sent[] | select(.type == "REPLY") | .re] as $closed
+  | def age: ((($now | tonumber) - (.ts | fromdate)) / 60 | floor)
+      | if . >= 60 then "\(. / 60 | floor)h" else "\(.)m" end;
+  "| task | sent/max | review | verify | open requests |",
+  "| --- | --- | --- | --- | --- |",
+  ($b[0] | to_entries[] | .key as $t | .value as $bud
+    | [$sent[] | select(.task == $t)] as $m
+    | [$m[] | select(.type == "REQUEST") | .msg as $id | select(($closed | index($id)) == null)
+        | "\(.msg) \(.from)→\(.to) \(age)"] | join("; ") as $open
+    | "| \($t) | \($m | length)/\($bud.messages // 24) | \([$m[] | select(.type == "REVIEW")] | length)/\($bud.review // 1) | \([$m[] | select(.type == "REVIEW_VERIFY")] | length)/\($bud.verify // 1) | \($open) |")
+' "$LEDGER"
